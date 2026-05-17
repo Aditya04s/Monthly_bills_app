@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bill App icon placeholder">
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <rect x="126" y="80" width="260" height="352" rx="34" fill="#f8fafc"/>
+  <path d="M156 432l50-28 50 28 50-28 50 28V114a34 34 0 0 0-34-34H190a34 34 0 0 0-34 34v318Z" fill="#f8fafc"/>
+  <path d="M202 188h108M202 252h92M202 316h116" stroke="#0f766e" stroke-width="30" stroke-linecap="round"/>
+  <circle cx="338" cy="188" r="18" fill="#14b8a6"/>
+</svg>
+
