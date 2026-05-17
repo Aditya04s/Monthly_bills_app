@@ -1,7 +1,7 @@
 {
   "name": "bill-app",
   "private": true,
-  "homepage": "https://Aditya04s.github.io/Bill_app",
+  "homepage": "https://Aditya04s.github.io/Monthly_bills_app",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
