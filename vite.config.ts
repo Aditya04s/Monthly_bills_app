@@ -3,19 +3,20 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: "/Monthly_bills_app/",
   plugins: [
     react(),
     VitePWA({
       registerType: 'prompt',
       manifest: {
-        id: '/',
+        id: '/Monthly_bills_app/',
         name: 'Bill App',
         short_name: 'Bill App',
         description: 'Offline-first mobile bill app',
         lang: 'en-IN',
         dir: 'ltr',
-        start_url: '/',
-        scope: '/',
+        start_url: '/Monthly_bills_app/',
+        scope: '/Monthly_bills_app/',
         display: 'standalone',
         display_override: ['standalone', 'minimal-ui'],
         orientation: 'portrait',
@@ -55,7 +56,7 @@ export default defineConfig({
           {
             name: 'Calculator',
             short_name: 'Calculator',
-            url: '/#calculator',
+            url: '/Monthly_bills_app/#calculator',
             icons: [
               {
                 src: '/icons/icon-192.png',
@@ -67,7 +68,7 @@ export default defineConfig({
           {
             name: 'History',
             short_name: 'History',
-            url: '/#history',
+            url: '/Monthly_bills_app/#history',
             icons: [
               {
                 src: '/icons/icon-192.png',
