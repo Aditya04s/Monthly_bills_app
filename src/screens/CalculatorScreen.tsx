@@ -27,6 +27,16 @@ type PartyContactMap = Record<string, { name: string; phoneNumber: string }>;
 type BillFormValues = Record<BillFieldName, string>;
 type BillFormErrors = Partial<Record<BillFieldName, string>>;
 
+interface CalculatorSessionState {
+  errors: BillFormErrors;
+  historySaveState: HistorySaveState;
+  result: BillCalculationResult | null;
+  shareFeedback: ShareFeedback | null;
+  values: BillFormValues;
+}
+
+const CALCULATOR_SESSION_KEY = 'bill-app:calculator-session';
+
 const initialValues: BillFormValues = {
   waterBill: '',
   electricityBill: ''
@@ -115,6 +125,114 @@ function getDefaultPartyContacts(): PartyContactMap {
   }, {});
 }
 
+function getDefaultCalculatorSessionState(): CalculatorSessionState {
+  return {
+    values: initialValues,
+    errors: {},
+    result: null,
+    historySaveState: 'idle',
+    shareFeedback: null
+  };
+}
+
+function readCalculatorSessionState(): CalculatorSessionState {
+  if (typeof window === 'undefined') {
+    return getDefaultCalculatorSessionState();
+  }
+
+  try {
+    const storedValue = window.sessionStorage.getItem(CALCULATOR_SESSION_KEY);
+
+    if (!storedValue) {
+      return getDefaultCalculatorSessionState();
+    }
+
+    const parsedValue = JSON.parse(storedValue) as Partial<CalculatorSessionState>;
+
+    return {
+      values: {
+        ...initialValues,
+        ...parsedValue.values
+      },
+      errors: parsedValue.errors ?? {},
+      result: parsedValue.result ?? null,
+      historySaveState: isHistorySaveState(parsedValue.historySaveState)
+        ? parsedValue.historySaveState
+        : 'idle',
+      shareFeedback: parsedValue.shareFeedback ?? null
+    };
+  } catch {
+    return getDefaultCalculatorSessionState();
+  }
+}
+
+function writeCalculatorSessionState(state: CalculatorSessionState): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (isEmptyCalculatorSessionState(state)) {
+      window.sessionStorage.removeItem(CALCULATOR_SESSION_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(CALCULATOR_SESSION_KEY, JSON.stringify(state));
+  } catch {
+    // Calculator must remain usable even when session storage is unavailable.
+  }
+}
+
+function clearCalculatorSessionState(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(CALCULATOR_SESSION_KEY);
+  } catch {
+    // Ignore storage failures for temporary UI state.
+  }
+}
+
+function isHistorySaveState(value: unknown): value is HistorySaveState {
+  return value === 'idle' || value === 'saved' || value === 'failed';
+}
+
+function isEmptyCalculatorSessionState(state: CalculatorSessionState): boolean {
+  return (
+    state.values.waterBill === '' &&
+    state.values.electricityBill === '' &&
+    Object.keys(state.errors).length === 0 &&
+    state.result === null &&
+    state.historySaveState === 'idle' &&
+    state.shareFeedback === null
+  );
+}
+
+function openWhatsAppInSeparateContext(url: string): boolean {
+  try {
+    const openedWindow = window.open(url, '_blank');
+
+    if (openedWindow) {
+      openedWindow.opener = null;
+      return true;
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.append(link);
+    link.click();
+    link.remove();
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface AmountInputProps {
   error?: string;
   helperText: string;
@@ -185,13 +303,18 @@ function AmountInput({
 }
 
 export function CalculatorScreen({ isActive = true }: CalculatorScreenProps) {
-  const [values, setValues] = useState<BillFormValues>(initialValues);
-  const [errors, setErrors] = useState<BillFormErrors>({});
-  const [result, setResult] = useState<BillCalculationResult | null>(null);
+  const [initialSessionState] = useState(readCalculatorSessionState);
+  const [values, setValues] = useState<BillFormValues>(initialSessionState.values);
+  const [errors, setErrors] = useState<BillFormErrors>(initialSessionState.errors);
+  const [result, setResult] = useState<BillCalculationResult | null>(initialSessionState.result);
   const [parties, setParties] = useState<BillPartyInput[]>(DEFAULT_APP_SETTINGS.tenants);
   const [partyContacts, setPartyContacts] = useState<PartyContactMap>(getDefaultPartyContacts);
-  const [historySaveState, setHistorySaveState] = useState<HistorySaveState>('idle');
-  const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
+  const [historySaveState, setHistorySaveState] = useState<HistorySaveState>(
+    initialSessionState.historySaveState
+  );
+  const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(
+    initialSessionState.shareFeedback
+  );
   const resultRows = [
     ['Water Bill', result?.totals.waterBill.formatted ?? 'Not calculated'],
     ['Electricity Bill', result?.totals.electricityBill.formatted ?? 'Not calculated'],
@@ -227,6 +350,16 @@ export function CalculatorScreen({ isActive = true }: CalculatorScreenProps) {
       active = false;
     };
   }, [isActive]);
+
+  useEffect(() => {
+    writeCalculatorSessionState({
+      values,
+      errors,
+      result,
+      historySaveState,
+      shareFeedback
+    });
+  }, [errors, historySaveState, result, shareFeedback, values]);
 
   const handleAmountChange = (name: BillFieldName, value: string) => {
     setValues((currentValues) => ({
@@ -308,20 +441,34 @@ export function CalculatorScreen({ isActive = true }: CalculatorScreenProps) {
 
     const message = createPartyBillMessage(party, contact?.name || party.partyName);
     const shareUrl = createWhatsAppShareUrl(sanitizedPhone.phoneNumber, message);
-    const openedWindow = window.open(shareUrl, '_blank', 'noopener,noreferrer');
-
-    if (!openedWindow) {
-      window.location.assign(shareUrl);
-    }
-
-    setShareFeedback({
+    const nextFeedback: ShareFeedback = {
       partyId,
       type: 'success',
       message: 'WhatsApp opened with the message ready to send.'
+    };
+
+    writeCalculatorSessionState({
+      values,
+      errors,
+      result,
+      historySaveState,
+      shareFeedback: nextFeedback
     });
+
+    if (!openWhatsAppInSeparateContext(shareUrl)) {
+      setShareFeedback({
+        partyId,
+        type: 'error',
+        message: 'Unable to open WhatsApp. Please try again.'
+      });
+      return;
+    }
+
+    setShareFeedback(nextFeedback);
   };
 
   const handleResetCalculator = () => {
+    clearCalculatorSessionState();
     setValues(initialValues);
     setErrors({});
     setResult(null);
