@@ -19,7 +19,7 @@ export function ThemeSegmentedControl({ mode, onChange }: ThemeSegmentedControlP
             key={option}
             type="button"
             className={cx(
-              'min-h-11 rounded-md px-3 text-sm font-semibold capitalize transition-colors',
+              'min-h-11 rounded-md px-3 text-sm font-semibold capitalize transition duration-200 active:scale-[0.98]',
               active
                 ? 'bg-app-surface text-app-text shadow-sm'
                 : 'text-app-muted hover:text-app-text'
@@ -34,4 +34,3 @@ export function ThemeSegmentedControl({ mode, onChange }: ThemeSegmentedControlP
     </div>
   );
 }
-

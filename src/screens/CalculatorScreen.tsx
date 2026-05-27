@@ -7,9 +7,22 @@ import type {
   PartyBillResult
 } from '../types/calculation';
 import { DEFAULT_APP_SETTINGS, getAppSettings, saveCalculationHistory } from '../storage';
+import { cx } from '../utils/classNames';
 import { calculateBills, formatRatioShare } from '../utils/calculateBills';
+import {
+  createPartyBillMessage,
+  createWhatsAppShareUrl,
+  sanitizeWhatsAppPhoneNumber
+} from '../utils/whatsappShare';
 
 type BillFieldName = 'waterBill' | 'electricityBill';
+type HistorySaveState = 'idle' | 'saved' | 'failed';
+type ShareFeedback = {
+  message: string;
+  partyId: string;
+  type: 'error' | 'success';
+};
+type PartyContactMap = Record<string, { name: string; phoneNumber: string }>;
 
 type BillFormValues = Record<BillFieldName, string>;
 type BillFormErrors = Partial<Record<BillFieldName, string>>;
@@ -91,6 +104,17 @@ function formatBillShare(bill: PartyBillResult, parties: BillPartyInput[]): stri
   return `${bill.label} ${formatRatioShare(bill.ratio, ratioTotal)}`;
 }
 
+function getDefaultPartyContacts(): PartyContactMap {
+  return DEFAULT_APP_SETTINGS.tenants.reduce<PartyContactMap>((contacts, tenant) => {
+    contacts[tenant.id] = {
+      name: tenant.name,
+      phoneNumber: tenant.phoneNumber
+    };
+
+    return contacts;
+  }, {});
+}
+
 interface AmountInputProps {
   error?: string;
   helperText: string;
@@ -99,6 +123,10 @@ interface AmountInputProps {
   onChange: (name: BillFieldName, value: string) => void;
   placeholder: string;
   value: string;
+}
+
+interface CalculatorScreenProps {
+  isActive?: boolean;
 }
 
 function AmountInput({
@@ -134,7 +162,12 @@ function AmountInput({
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : helperId}
           onChange={(event) => onChange(name, normalizeAmountInput(event.target.value))}
-          className="min-h-14 w-full rounded-lg border border-app-border bg-app-elevated py-3 pl-16 pr-4 text-2xl font-semibold tabular-nums text-app-text shadow-sm transition duration-200 placeholder:text-app-muted/60 focus:border-app-accent focus:bg-app-surface focus:outline-none focus:ring-4 focus:ring-app-accent/15"
+          className={cx(
+            'min-h-14 w-full rounded-lg border bg-app-elevated py-3 pl-16 pr-4 text-2xl font-semibold tabular-nums text-app-text shadow-sm transition duration-200 placeholder:text-app-muted/60 focus:bg-app-surface focus:outline-none focus:ring-4',
+            error
+              ? 'border-red-500/70 bg-red-500/5 focus:border-red-500 focus:ring-red-500/15'
+              : 'border-app-border focus:border-app-accent focus:ring-app-accent/15'
+          )}
         />
       </div>
       <p id={helperId} className="text-sm text-app-muted">
@@ -151,11 +184,14 @@ function AmountInput({
   );
 }
 
-export function CalculatorScreen() {
+export function CalculatorScreen({ isActive = true }: CalculatorScreenProps) {
   const [values, setValues] = useState<BillFormValues>(initialValues);
   const [errors, setErrors] = useState<BillFormErrors>({});
   const [result, setResult] = useState<BillCalculationResult | null>(null);
   const [parties, setParties] = useState<BillPartyInput[]>(DEFAULT_APP_SETTINGS.tenants);
+  const [partyContacts, setPartyContacts] = useState<PartyContactMap>(getDefaultPartyContacts);
+  const [historySaveState, setHistorySaveState] = useState<HistorySaveState>('idle');
+  const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
   const resultRows = [
     ['Water Bill', result?.totals.waterBill.formatted ?? 'Not calculated'],
     ['Electricity Bill', result?.totals.electricityBill.formatted ?? 'Not calculated'],
@@ -163,12 +199,26 @@ export function CalculatorScreen() {
   ];
 
   useEffect(() => {
+    if (!isActive) {
+      return undefined;
+    }
+
     let active = true;
 
     void getAppSettings()
       .then((settings) => {
         if (active) {
           setParties(settings.tenants);
+          setPartyContacts(
+            settings.tenants.reduce<PartyContactMap>((contacts, tenant) => {
+              contacts[tenant.id] = {
+                name: tenant.name,
+                phoneNumber: tenant.phoneNumber
+              };
+
+              return contacts;
+            }, {})
+          );
         }
       })
       .catch(() => undefined);
@@ -176,7 +226,7 @@ export function CalculatorScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isActive]);
 
   const handleAmountChange = (name: BillFieldName, value: string) => {
     setValues((currentValues) => ({
@@ -185,6 +235,8 @@ export function CalculatorScreen() {
     }));
 
     setResult(null);
+    setHistorySaveState('idle');
+    setShareFeedback(null);
 
     if (errors[name]) {
       setErrors((currentErrors) => ({
@@ -202,6 +254,8 @@ export function CalculatorScreen() {
 
     if (Object.keys(nextErrors).length > 0) {
       setResult(null);
+      setHistorySaveState('idle');
+      setShareFeedback(null);
       return;
     }
 
@@ -212,13 +266,73 @@ export function CalculatorScreen() {
     });
 
     setResult(nextResult);
-    void saveCalculationHistory(nextResult).catch(() => undefined);
+    setHistorySaveState('idle');
+    setShareFeedback(null);
+    void saveCalculationHistory(nextResult)
+      .then(() => setHistorySaveState('saved'))
+      .catch(() => setHistorySaveState('failed'));
+  };
+
+  const handleShareParty = (partyId: string) => {
+    if (!result) {
+      setShareFeedback({
+        partyId,
+        type: 'error',
+        message: 'Calculate the bill before sharing.'
+      });
+      return;
+    }
+
+    const party = result.parties.find((item) => item.partyId === partyId);
+
+    if (!party) {
+      setShareFeedback({
+        partyId,
+        type: 'error',
+        message: 'Unable to find this bill summary.'
+      });
+      return;
+    }
+
+    const contact = partyContacts[partyId];
+    const sanitizedPhone = sanitizeWhatsAppPhoneNumber(contact?.phoneNumber ?? '');
+
+    if (sanitizedPhone.error || !sanitizedPhone.phoneNumber) {
+      setShareFeedback({
+        partyId,
+        type: 'error',
+        message: sanitizedPhone.error ?? 'Enter a valid WhatsApp number in Settings.'
+      });
+      return;
+    }
+
+    const message = createPartyBillMessage(party, contact?.name || party.partyName);
+    const shareUrl = createWhatsAppShareUrl(sanitizedPhone.phoneNumber, message);
+    const openedWindow = window.open(shareUrl, '_blank', 'noopener,noreferrer');
+
+    if (!openedWindow) {
+      window.location.assign(shareUrl);
+    }
+
+    setShareFeedback({
+      partyId,
+      type: 'success',
+      message: 'WhatsApp opened with the message ready to send.'
+    });
+  };
+
+  const handleResetCalculator = () => {
+    setValues(initialValues);
+    setErrors({});
+    setResult(null);
+    setHistorySaveState('idle');
+    setShareFeedback(null);
   };
 
   return (
-    <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+    <form className="space-y-4" onSubmit={handleSubmit} noValidate>
       <section
-        className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm transition-colors duration-200"
+        className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm transition duration-200"
         aria-labelledby="calculator-title"
       >
         <div className="flex items-start justify-between gap-3">
@@ -226,7 +340,7 @@ export function CalculatorScreen() {
             <h2 id="calculator-title" className="text-lg font-semibold">
               Bill Details
             </h2>
-            <p className="mt-1 text-sm text-app-muted">
+            <p className="mt-1 text-sm leading-6 text-app-muted">
               Enter both bill amounts before calculating.
             </p>
           </div>
@@ -252,16 +366,31 @@ export function CalculatorScreen() {
       </section>
 
       <section
-        className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm transition-colors duration-200"
+        className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm transition duration-200"
         aria-labelledby="output-title"
       >
-        <div>
-          <h2 id="output-title" className="text-lg font-semibold">
-            Result
-          </h2>
-          <p className="mt-1 text-sm text-app-muted">
-            Calculated only after pressing the button.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="output-title" className="text-lg font-semibold">
+              Result
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-app-muted">
+              Calculated only after pressing the button.
+            </p>
+          </div>
+          {historySaveState !== 'idle' ? (
+            <span
+              className={cx(
+                'rounded-md px-2.5 py-1 text-xs font-bold',
+                historySaveState === 'saved'
+                  ? 'bg-app-accentSoft text-app-accent'
+                  : 'bg-red-500/10 text-red-700 dark:text-red-200'
+              )}
+              role="status"
+            >
+              {historySaveState === 'saved' ? 'Saved' : 'Local only'}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-4 grid gap-3">
@@ -301,11 +430,38 @@ export function CalculatorScreen() {
                     </div>
                   ))}
                 </div>
+
+                <div className="mt-4 border-t border-app-border pt-3">
+                  <button
+                    type="button"
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 text-sm font-bold text-emerald-700 transition duration-200 hover:bg-emerald-500/15 active:scale-[0.98] dark:text-emerald-300"
+                    onClick={() => handleShareParty(party.partyId)}
+                  >
+                    <span aria-hidden="true">WA</span>
+                    <span>Share {partyContacts[party.partyId]?.name || party.partyName}</span>
+                  </button>
+                  {shareFeedback?.partyId === party.partyId ? (
+                    <p
+                      className={cx(
+                        'mt-2 text-sm font-medium',
+                        shareFeedback.type === 'success'
+                          ? 'text-app-accent'
+                          : 'text-red-600 dark:text-red-300'
+                      )}
+                      role="status"
+                    >
+                      {shareFeedback.message}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ))
           ) : (
-            <div className="rounded-lg bg-app-elevated p-4 text-sm text-app-muted">
-              Tenant and owner shares will appear after calculation.
+            <div className="rounded-lg border border-dashed border-app-border bg-app-elevated p-5 text-center">
+              <p className="text-sm font-semibold text-app-text">Ready to calculate</p>
+              <p className="mt-1 text-sm leading-6 text-app-muted">
+                Tenant and owner shares will appear here after calculation.
+              </p>
             </div>
           )}
         </div>
@@ -317,6 +473,16 @@ export function CalculatorScreen() {
           className="min-h-14 w-full rounded-lg bg-app-accent px-5 text-base font-bold text-white shadow-sm transition duration-200 hover:opacity-95 active:scale-[0.99] dark:text-slate-950"
         >
           Calculate
+        </button>
+      </div>
+
+      <div className="pb-3 pt-2">
+        <button
+          type="button"
+          className="min-h-12 w-full rounded-lg border border-app-border bg-app-surface px-4 text-sm font-semibold text-app-muted shadow-sm transition duration-200 hover:text-app-text active:scale-[0.98]"
+          onClick={handleResetCalculator}
+        >
+          Clear Calculation
         </button>
       </div>
     </form>

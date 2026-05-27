@@ -35,8 +35,22 @@ function HistoryLoadingState() {
       {[0, 1, 2].map((item) => (
         <div
           key={item}
-          className="h-28 animate-pulse rounded-lg border border-app-border bg-app-surface"
-        />
+          className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm"
+        >
+          <div className="animate-pulse space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <div className="h-4 w-28 rounded bg-app-elevated" />
+                <div className="h-3 w-16 rounded bg-app-elevated" />
+              </div>
+              <div className="h-6 w-20 rounded bg-app-elevated" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="h-16 rounded-lg bg-app-elevated" />
+              <div className="h-16 rounded-lg bg-app-elevated" />
+            </div>
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -44,7 +58,13 @@ function HistoryLoadingState() {
 
 function HistoryEmptyState() {
   return (
-    <div className="rounded-lg border border-dashed border-app-border bg-app-surface p-5 text-center">
+    <div className="rounded-lg border border-dashed border-app-border bg-app-surface p-6 text-center shadow-sm">
+      <div
+        className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-app-accentSoft text-sm font-bold text-app-accent"
+        aria-hidden="true"
+      >
+        0
+      </div>
       <h2 className="text-lg font-semibold">No history yet</h2>
       <p className="mt-2 text-sm leading-6 text-app-muted">
         Completed calculations will appear here after you press Calculate.
@@ -78,7 +98,7 @@ function DeleteConfirmation({ isDeleting, onCancel, onConfirm }: DeleteConfirmat
         <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             type="button"
-            className="min-h-12 rounded-lg border border-app-border bg-app-elevated px-4 text-sm font-semibold text-app-text transition duration-200 active:scale-[0.99]"
+            className="min-h-12 rounded-lg border border-app-border bg-app-elevated px-4 text-sm font-semibold text-app-text transition duration-200 active:scale-[0.98] disabled:opacity-60"
             onClick={onCancel}
             disabled={isDeleting}
           >
@@ -86,7 +106,7 @@ function DeleteConfirmation({ isDeleting, onCancel, onConfirm }: DeleteConfirmat
           </button>
           <button
             type="button"
-            className="min-h-12 rounded-lg bg-red-600 px-4 text-sm font-bold text-white transition duration-200 active:scale-[0.99] disabled:opacity-70 dark:bg-red-400 dark:text-slate-950"
+            className="min-h-12 rounded-lg bg-red-600 px-4 text-sm font-bold text-white transition duration-200 active:scale-[0.98] disabled:opacity-70 dark:bg-red-400 dark:text-slate-950"
             onClick={onConfirm}
             disabled={isDeleting}
           >
@@ -110,7 +130,7 @@ const HistoryCard = memo(function HistoryCard({ entry, expanded, onToggle }: His
   const time = useMemo(() => formatEntryTime(entry.timestamp), [entry.timestamp]);
 
   return (
-    <article className="overflow-hidden rounded-lg border border-app-border bg-app-surface shadow-sm content-auto">
+    <article className="overflow-hidden rounded-lg border border-app-border bg-app-surface shadow-sm transition duration-200 content-auto">
       <button
         type="button"
         className="block w-full p-4 text-left transition duration-200 active:bg-app-elevated"
@@ -122,7 +142,7 @@ const HistoryCard = memo(function HistoryCard({ entry, expanded, onToggle }: His
             <h2 className="text-base font-semibold text-app-text">{date}</h2>
             <p className="mt-1 text-sm text-app-muted">{time}</p>
           </div>
-          <span className="rounded-md bg-app-accentSoft px-2.5 py-1 text-xs font-bold text-app-accent">
+          <span className="shrink-0 rounded-md bg-app-accentSoft px-2.5 py-1 text-xs font-bold text-app-accent">
             {result.totals.combined.formatted}
           </span>
         </div>
@@ -239,18 +259,18 @@ export function HistoryScreen() {
   }, []);
 
   return (
-    <section className="space-y-4" aria-labelledby="history-title">
+    <section className="space-y-4" aria-labelledby="history-title" aria-busy={loading}>
       <div className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 id="history-title" className="text-lg font-semibold">
               Calculation History
             </h2>
-            <p className="mt-1 text-sm text-app-muted">{entries.length} saved entries</p>
+            <p className="mt-1 text-sm leading-6 text-app-muted">{entries.length} saved entries</p>
           </div>
           <button
             type="button"
-            className="min-h-11 rounded-lg border border-red-500/40 px-3 text-sm font-semibold text-red-600 transition duration-200 active:scale-[0.99] disabled:opacity-50 dark:text-red-300"
+            className="min-h-11 rounded-lg border border-red-500/40 px-3 text-sm font-semibold text-red-600 transition duration-200 active:scale-[0.98] disabled:opacity-50 dark:text-red-300"
             onClick={() => setConfirmingDelete(true)}
             disabled={entries.length === 0 || loading}
           >

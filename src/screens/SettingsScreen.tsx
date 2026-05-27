@@ -8,6 +8,7 @@ import {
 } from '../storage';
 import type { TenantSettings } from '../types/storage';
 import type { ThemeState } from '../types/theme';
+import { cx } from '../utils/classNames';
 
 interface SettingsScreenProps {
   theme: ThemeState;
@@ -22,6 +23,10 @@ interface TenantSettingsForm {
 }
 
 type SettingsErrors = Partial<Record<string, string>>;
+type SaveFeedback = {
+  message: string;
+  type: 'error' | 'success';
+};
 
 function settingsToForm(tenants: TenantSettings[]): TenantSettingsForm[] {
   return tenants.map((tenant) => ({
@@ -130,7 +135,12 @@ function TextInput({ error, inputMode = 'text', label, onChange, value }: TextIn
         autoComplete="off"
         aria-invalid={Boolean(error)}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-12 w-full rounded-lg border border-app-border bg-app-elevated px-3 text-base font-semibold text-app-text shadow-sm transition duration-200 placeholder:text-app-muted/60 focus:border-app-accent focus:bg-app-surface focus:outline-none focus:ring-4 focus:ring-app-accent/15"
+        className={cx(
+          'min-h-12 w-full rounded-lg border bg-app-elevated px-3 text-base font-semibold text-app-text shadow-sm transition duration-200 placeholder:text-app-muted/60 focus:bg-app-surface focus:outline-none focus:ring-4',
+          error
+            ? 'border-red-500/70 bg-red-500/5 focus:border-red-500 focus:ring-red-500/15'
+            : 'border-app-border focus:border-app-accent focus:ring-app-accent/15'
+        )}
       />
       <span className="block min-h-5 text-sm font-medium text-red-600 dark:text-red-300">
         {error ?? ''}
@@ -146,7 +156,7 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
   const [errors, setErrors] = useState<SettingsErrors>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<SaveFeedback | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -174,6 +184,7 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
       currentForm.map((tenant) => (tenant.id === id ? { ...tenant, ...updates } : tenant))
     );
     setFeedback(null);
+    setErrors({});
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -192,9 +203,9 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
       await saveAppSettings({
         tenants: formToSettings(form)
       });
-      setFeedback('Settings saved.');
+      setFeedback({ message: 'Settings saved.', type: 'success' });
     } catch {
-      setFeedback('Unable to save settings.');
+      setFeedback({ message: 'Unable to save settings.', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -210,23 +221,25 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
       await saveAppSettings({
         tenants: formToSettings(defaultForm)
       });
-      setFeedback('Settings reset.');
+      setFeedback({ message: 'Settings reset.', type: 'success' });
     } catch {
-      setFeedback('Unable to reset settings.');
+      setFeedback({ message: 'Unable to reset settings.', type: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <section className="space-y-4" aria-labelledby="settings-title">
+    <section className="space-y-4" aria-labelledby="settings-title" aria-busy={loading || saving}>
       <div className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 id="settings-title" className="text-lg font-semibold">
               Theme
             </h2>
-            <p className="text-sm capitalize text-app-muted">{theme.resolvedTheme}</p>
+            <p className="mt-1 text-sm capitalize leading-6 text-app-muted">
+              {theme.resolvedTheme}
+            </p>
           </div>
         </div>
 
@@ -238,19 +251,27 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Bill Settings</h2>
-              <p className="mt-1 text-sm text-app-muted">
+              <p className="mt-1 text-sm leading-6 text-app-muted">
                 {loading ? 'Loading saved settings' : 'Ratios and contact fields'}
               </p>
             </div>
             <button
               type="button"
-              className="min-h-11 rounded-lg border border-app-border px-3 text-sm font-semibold text-app-text transition duration-200 active:scale-[0.99] disabled:opacity-60"
+              className="min-h-11 rounded-lg border border-app-border px-3 text-sm font-semibold text-app-text transition duration-200 active:scale-[0.98] disabled:opacity-60"
               onClick={handleReset}
-              disabled={saving}
+              disabled={saving || loading}
             >
               Reset
             </button>
           </div>
+
+          {loading ? (
+            <div className="mt-4 grid grid-cols-3 gap-2" aria-hidden="true">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-2 animate-pulse rounded bg-app-elevated" />
+              ))}
+            </div>
+          ) : null}
 
           {errors.waterTotal || errors.electricityTotal ? (
             <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm font-medium text-red-700 dark:text-red-200">
@@ -307,8 +328,16 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
         ))}
 
         {feedback ? (
-          <div className="rounded-lg bg-app-accentSoft p-3 text-sm font-semibold text-app-accent">
-            {feedback}
+          <div
+            className={cx(
+              'rounded-lg border p-3 text-sm font-semibold',
+              feedback.type === 'success'
+                ? 'border-app-accent/20 bg-app-accentSoft text-app-accent'
+                : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-200'
+            )}
+            role="status"
+          >
+            {feedback.message}
           </div>
         ) : null}
 
@@ -316,7 +345,7 @@ export function SettingsScreen({ theme }: SettingsScreenProps) {
           <button
             type="submit"
             className="min-h-14 w-full rounded-lg bg-app-accent px-5 text-base font-bold text-white shadow-sm transition duration-200 active:scale-[0.99] disabled:opacity-70 dark:text-slate-950"
-            disabled={saving}
+            disabled={saving || loading}
           >
             {saving ? 'Saving' : 'Save Settings'}
           </button>

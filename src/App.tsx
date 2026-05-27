@@ -15,20 +15,36 @@ const SettingsScreen = lazy(() =>
   }))
 );
 
+function RouteLoadingState() {
+  return (
+    <div className="rounded-lg border border-app-border bg-app-surface p-4 shadow-sm" aria-label="Loading screen">
+      <div className="animate-pulse space-y-4">
+        <div className="h-5 w-32 rounded bg-app-elevated" />
+        <div className="space-y-2">
+          <div className="h-14 rounded-lg bg-app-elevated" />
+          <div className="h-14 rounded-lg bg-app-elevated" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const { route, navigate } = useHashRoute();
   const theme = useTheme();
 
   return (
     <AppShell activeRoute={route} onNavigate={navigate}>
-      {route === 'calculator' && <CalculatorScreen />}
+      <div hidden={route !== 'calculator'}>
+        <CalculatorScreen isActive={route === 'calculator'} />
+      </div>
       {route === 'history' && (
-        <Suspense fallback={<div className="rounded-lg bg-app-surface p-4 text-sm text-app-muted">Loading</div>}>
+        <Suspense fallback={<RouteLoadingState />}>
           <HistoryScreen />
         </Suspense>
       )}
       {route === 'settings' && (
-        <Suspense fallback={<div className="rounded-lg bg-app-surface p-4 text-sm text-app-muted">Loading</div>}>
+        <Suspense fallback={<RouteLoadingState />}>
           <SettingsScreen theme={theme} />
         </Suspense>
       )}

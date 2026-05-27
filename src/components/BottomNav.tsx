@@ -23,7 +23,7 @@ export function BottomNav({ activeRoute, onNavigate }: BottomNavProps) {
               key={item.route}
               type="button"
               className={cx(
-                'flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-2 text-xs font-medium transition-colors',
+                'flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-2 text-xs font-semibold transition duration-200 active:scale-[0.98]',
                 isActive
                   ? 'bg-app-accentSoft text-app-accent'
                   : 'text-app-muted hover:bg-app-elevated hover:text-app-text'
@@ -40,4 +40,3 @@ export function BottomNav({ activeRoute, onNavigate }: BottomNavProps) {
     </nav>
   );
 }
-
